@@ -42,7 +42,7 @@ See more at https://thingpulse.com
 #include "OpenWeatherMapForecast.h"
 #include "WeatherStationFonts.h"
 #include "WeatherStationImages.h"
-
+#include "token.h"
 //Humidity
 #include <SimpleDHT.h>
 
@@ -55,8 +55,8 @@ See more at https://thingpulse.com
  **************************/
 
 // WIFI
-const char* WIFI_SSID = "WLAN-886864_EXT";
-const char* WIFI_PWD = "17781912408437034468";
+const char* WIFI_SSID = SSID;
+const char* WIFI_PWD = PWD;
 
 //#define TZ              2       // (utc+) TZ in hours
 #define TZ              0       // (utc+) TZ in hours
@@ -110,14 +110,14 @@ const int port = 9998;
 // OpenWeatherMap Settings
 // Sign up here to get an API key:
 // https://docs.thingpulse.com/how-tos/openweathermap-key/
-String OPEN_WEATHER_MAP_APP_ID = "5e42fa451fb22799b6fe1bdfb054c5ac";
+String OPEN_WEATHER_MAP_APP_ID = APP_ID;
 /*
 Go to https://openweathermap.org/find?q= and search for a location. Go through the
 result set and select the entry closest to the actual location you want to display 
 data for. It'll be a URL like https://openweathermap.org/city/2657896. The number
 at the end is what you assign to the constant below.
  */
-String OPEN_WEATHER_MAP_LOCATION_ID = "2935022";
+String OPEN_WEATHER_MAP_LOCATION_ID = LOCATION_ID;
 
 // Pick a language code from this list:
 // Arabic - ar, Bulgarian - bg, Catalan - ca, Czech - cz, German - de, Greek - el,
@@ -166,6 +166,9 @@ bool readyForWeatherUpdate = false;
 String lastUpdate = "--";
 
 long timeSinceLastWUpdate = 0;
+// for humidity update, update for each 5 Sec.
+long timeSinceLastHUpdate = 0;
+const int HumidityUpdateInterval = 5000;
 
 //declaring prototypes
 void drawProgress(OLEDDisplay *display, int percentage, String label);
@@ -193,6 +196,9 @@ const int RC_Freez_Time = 8000;
 int RC_Freez_Begin = 0;
 bool RC_Freez = false;
 
+// Dark mode: energy saving.
+void Dark_Mode();
+const int dark_value = 80;
 // Add frames
 // this array keeps function pointers to all frames
 // frames are the single views that slide from right to left
@@ -298,12 +304,21 @@ void loop() {
   if (readyForWeatherUpdate && ui.getUiState()->frameState == FIXED) {
     updateData(&display);
     // delete it, just for test.
+  }
+
+  if (millis() - timeSinceLastHUpdate > HumidityUpdateInterval) {
     updataHumidity();
+    timeSinceLastHUpdate = millis();
   }
   
   updateDisplay();
   
   ISR_EVENT_HANDLER();
+
+  if (lightValue <= dark_value)
+  {
+    Dark_Mode();  
+  }
 }
 
 void updateDisplay(){
@@ -551,4 +566,20 @@ void updateLightValue(){
   lightValue = int(readValue / 2);
 
   Serial.println(lightValue);
+}
+
+void Dark_Mode()
+{
+  display.displayOff();
+
+  while(1)
+  {
+    updateLightValue();
+    if (lightValue > dark_value)
+    {
+      display.displayOn();
+      break;
+    }
+    delay(500);
+  }
 }
