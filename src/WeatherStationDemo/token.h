@@ -4,5 +4,5 @@
 
 String LOCATION_ID = "location id";
 String APP_ID = "app id";
-const char* SSID = "WLAN ssid";
-const char* PWD = "WLAN password";
+char* SSID = "WLAN ssid";
+char* PWD = "WLAN password";
