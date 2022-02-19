@@ -28,7 +28,7 @@ See more at https://thingpulse.com
 #include <ESPWiFi.h>
 #include <ESPHTTPClient.h>
 #include <JsonListener.h>
-
+#include <ESP8266WebServer.h>
 // time
 #include <time.h>                       // time() ctime()
 #include <sys/time.h>                   // struct timeval
@@ -45,7 +45,7 @@ See more at https://thingpulse.com
 #include "token.h"
 //Humidity
 #include <SimpleDHT.h>
-
+#include "AutoWiFi.h"
 //https://cxybb.com/article/qq_38113006/119026279
 //中断https://blog.51cto.com/u_15127590/4036514
 //D1:5       D2:4       D4:2      D5:14       D6:12       D7:13     D8:15 
@@ -55,8 +55,8 @@ See more at https://thingpulse.com
  **************************/
 
 // WIFI
-const char* WIFI_SSID = SSID;
-const char* WIFI_PWD = PWD;
+String WIFI_SSID = SSID;
+String WIFI_PWD = PWD;
 
 //#define TZ              2       // (utc+) TZ in hours
 #define TZ              0       // (utc+) TZ in hours
@@ -166,9 +166,9 @@ bool readyForWeatherUpdate = false;
 String lastUpdate = "--";
 
 long timeSinceLastWUpdate = 0;
-// for humidity update, update for each 5 Sec.
+// for humidity update, update for each 3 Min.
 long timeSinceLastHUpdate = 0;
-const int HumidityUpdateInterval = 5000;
+const int HumidityUpdateInterval = 3 * 60 * 1000;
 
 //declaring prototypes
 void drawProgress(OLEDDisplay *display, int percentage, String label);
@@ -185,6 +185,8 @@ void updateDisplay();
 void updataHumidity();
 void updateLightValue();
 
+//void drawAutoWiFi(IPAddress ip, char* autoSSID, char* autoPWD);
+
 // Interrupts
 void ICACHE_RAM_ATTR ISR1();
 void ICACHE_RAM_ATTR ISR2();
@@ -198,7 +200,8 @@ bool RC_Freez = false;
 
 // Dark mode: energy saving.
 void Dark_Mode();
-const int dark_value = 80;
+const int dark_value = 100;
+
 // Add frames
 // this array keeps function pointers to all frames
 // frames are the single views that slide from right to left
@@ -225,9 +228,45 @@ void setup() {
   display.setTextAlignment(TEXT_ALIGN_CENTER);
   display.setContrast(255);
 
+  //TODO: conncet with defualt(from EEPROM), if not available, then using Auto WiFi
+  //      and record to EEPROM to update the newest default WiFI configuration.
+  // Auto connection using webserver.
+  AutoWifi autoWifi;
+  //char * ip[sizeof(autoWifi.getMyIP())];
+  //snprintf(ip, sizeof(autoWifi.getMyIP()), autoWifi.getMyIP());
+  display.clear();
+  display.setTextAlignment(TEXT_ALIGN_LEFT);
+  display.setFont(ArialMT_Plain_10);
+  display.drawString(0, 0, "Please connect my WiFi:");
+  //display.setFont(ArialMT_Plain_16);
+  display.drawString(0, 16, "SSID:");
+  display.drawString(32, 16, autoWifi.AutoSSID);
+  display.drawString(0, 32, "PWD:");
+  display.drawString(32, 32, autoWifi.AutoPWD);
+  display.drawString(0, 48, "URL:");
+  display.drawString(32, 48, autoWifi.getMyIP().toString());
+  display.display();
+  
+  autoWifi.start();
+  WIFI_SSID = autoWifi.ssid;
+  WIFI_PWD = autoWifi.pwd;
+  Serial.begin(9600);
+  Serial.println("successfully get SSID and PWD");
+  Serial.println(WIFI_SSID);
+  Serial.println(WIFI_PWD);
+  
+  //display.clear();
+  //display.drawString(10, 10, "Successfully get SSID and PWD");
+  //display.display();
+  
+  autoWifi.close();
+
+  
   WiFi.begin(WIFI_SSID, WIFI_PWD);
 
   int counter = 0;
+  display.setFont(ArialMT_Plain_10);
+  display.setTextAlignment(TEXT_ALIGN_CENTER);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -240,6 +279,9 @@ void setup() {
 
     counter++;
   }
+
+  
+ 
   // Get time from network time service
   configTime(TZ_SEC, DST_SEC, "pool.ntp.org");
 
@@ -489,10 +531,9 @@ void drawHeaderOverlay(OLEDDisplay *display, OLEDDisplayUiState* state) {
   display->drawString(0, 54, String(buff));
   display->setTextAlignment(TEXT_ALIGN_RIGHT);
   // TODO: just for testing the suitable light value, later to restore the field.
-  //String temp = String(int(currentWeather.temp)) + (IS_METRIC ? "°C" : "°F");
+  String temp = String(int(currentWeather.temp)) + (IS_METRIC ? "°C" : "°F");
   updateLightValue();
-  
-  String temp = String(lightValue);
+  //String temp = String(lightValue);
   display->drawString(128, 54, temp);
   display->drawHorizontalLine(0, 52, 128);
 }
@@ -571,14 +612,28 @@ void updateLightValue(){
 void Dark_Mode()
 {
   display.displayOff();
-
+  int counter = 0;
   while(1)
   {
     updateLightValue();
     if (lightValue > dark_value)
     {
-      display.displayOn();
-      break;
+      // Observe for multiple times to eliminate the vibration.
+      for (int i = 0; i < 5; i++)
+      {
+        updateLightValue();
+        if (lightValue > dark_value)
+        {
+          counter += 1;
+        }
+        delay(50);
+      }
+
+      if (counter >= 5)
+      {
+        display.displayOn();
+        break;
+      }
     }
     delay(500);
   }

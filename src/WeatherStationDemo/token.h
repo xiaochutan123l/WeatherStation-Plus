@@ -1,7 +1,5 @@
 /*
-
 ***** This file save Tokens for WiFi and Weather API *****
-
 */
 
 String LOCATION_ID = "location id";
